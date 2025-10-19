@@ -1,7 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- IMPORTANT ---
     // This should already be your Google Cloud Run URL
-    const SIGNALING_SERVER_URL = 'https://live-poll-server-147708164583.us-central1.run.app/'; // PASTE YOUR URL HERE
+    const SIGNALING_SERVER_URL = 'wss://live-poll-server-147708164583.us-central1.run.app/'; // PASTE YOUR URL HERE
 
     // --- UI Elements ---
     const roleSelection = document.getElementById('role-selection');
