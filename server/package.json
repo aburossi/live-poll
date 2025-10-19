@@ -1,0 +1,14 @@
+{
+  "name": "live-poll-signaler",
+  "version": "1.0.0",
+  "description": "Signaling server for WebRTC live poll application",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "ws": "^8.17.0"
+  }
+}

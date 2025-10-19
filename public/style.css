@@ -1,0 +1,98 @@
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: #f4f7f6;
+    color: #333;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    margin: 0;
+}
+
+.container {
+    background: white;
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    width: 90%;
+    max-width: 800px;
+    text-align: center;
+}
+
+.hidden {
+    display: none !important;
+}
+
+button {
+    padding: 10px 20px;
+    font-size: 1rem;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    background-color: #007bff;
+    color: white;
+    margin: 5px;
+    transition: background-color 0.2s;
+}
+
+button:hover {
+    background-color: #0056b3;
+}
+
+input[type="text"] {
+    width: calc(100% - 22px);
+    padding: 10px;
+    margin-bottom: 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    font-size: 1rem;
+}
+
+#role-selection button {
+    padding: 20px 40px;
+    font-size: 1.2rem;
+}
+
+#session-info {
+    margin: 20px 0;
+    background: #e9ecef;
+    padding: 15px;
+    border-radius: 5px;
+}
+
+#qrcode {
+    margin: 15px auto;
+    width: 128px;
+    height: 128px;
+}
+
+#answers-container {
+    margin-bottom: 10px;
+}
+
+.answer-option {
+    display: block;
+}
+
+#answer-options button {
+    display: block;
+    width: 100%;
+    margin-bottom: 10px;
+    background-color: #6c757d;
+}
+
+#answer-options button.voted {
+    background-color: #28a745; /* Green for voted */
+    border: 2px solid #218838;
+}
+
+.chart-container {
+    position: relative;
+    height: 40vh;
+    width: 100%;
+    margin: 20px 0;
+}
+
+.controls {
+    margin-top: 20px;
+}

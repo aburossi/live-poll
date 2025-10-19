@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Classroom Poll</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Libraries for QR Code and Charting -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Live Classroom Poll</h1>
+
+        <!-- Role Selection View -->
+        <div id="role-selection">
+            <h2>Join as...</h2>
+            <button id="teacher-btn">Teacher</button>
+            <button id="student-btn">Student</button>
+        </div>
+
+        <!-- Teacher View -->
+        <div id="teacher-view" class="hidden">
+            <h2>Teacher Dashboard</h2>
+            <div id="session-info">
+                <h3>Share this Session ID with your students:</h3>
+                <strong id="session-id-display"></strong>
+                <div id="qrcode"></div>
+            </div>
+            <hr>
+            <div id="question-creator">
+                <h3>Create a Poll</h3>
+                <input type="text" id="question-input" placeholder="Enter your question here">
+                <div id="answers-container">
+                    <input type="text" class="answer-option" placeholder="Option A">
+                    <input type="text" class="answer-option" placeholder="Option B">
+                </div>
+                <button id="add-option-btn">+ Add Option</button>
+                <button id="broadcast-btn" class="primary-btn">Broadcast Question</button>
+            </div>
+            <div id="results-area">
+                <h3>Live Results</h3>
+                <div class="chart-container">
+                    <canvas id="results-chart"></canvas>
+                </div>
+                <div class="controls">
+                    <button id="clear-results-btn">Clear Results</button>
+                    <button id="new-question-btn">New Question</button>
+                    <button id="export-csv-btn">Export CSV</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Student View -->
+        <div id="student-view" class="hidden">
+            <h2>Student Poll</h2>
+            <div id="join-session">
+                <input type="text" id="session-id-input" placeholder="Enter Session ID">
+                <button id="join-btn">Join</button>
+            </div>
+            <div id="poll-area" class="hidden">
+                <h3 id="question-display">Waiting for the teacher to send a question...</h3>
+                <div id="answer-options"></div>
+                <div class="chart-container hidden" id="student-chart-container">
+                    <canvas id="student-results-chart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
