@@ -1,3 +1,5 @@
+console.log('--- Live Poll App v1.1 ---');
+
 document.addEventListener('DOMContentLoaded', () => {
     // --- IMPORTANT ---
     // This should already be your Google Cloud Run URL
