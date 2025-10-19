@@ -1,9 +1,9 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- IMPORTANT ---
-    // Replace this with the URL you get after deploying the server to Google Cloud Run
-    const SIGNALING_SERVER_URL = 'https://live-poll-server-147708164583.us-central1.run.app/';
+    // This should already be your Google Cloud Run URL
+    const SIGNALING_SERVER_URL = 'https://live-poll-server-147708164583.us-central1.run.app/'; // PASTE YOUR URL HERE
 
-    // UI Elements
+    // --- UI Elements ---
     const roleSelection = document.getElementById('role-selection');
     const teacherView = document.getElementById('teacher-view');
     const studentView = document.getElementById('student-view');
@@ -26,13 +26,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const exportCsvBtn = document.getElementById('export-csv-btn');
     const studentChartContainer = document.getElementById('student-chart-container');
 
-    // WebRTC and State Variables
+    // --- WebRTC and State Variables ---
     let peerConnections = {}; // For teacher: { studentId: RTCPeerConnection }
     let dataChannels = {}; // For teacher: { studentId: RTCDataChannel }
     let localPeerConnection; // For student
     let localDataChannel; // For student
     let sessionId;
     let ws;
+    let role; // 'teacher' or 'student'
     let teacherChart;
     let studentChart;
     let currentPollData = {};
@@ -40,20 +41,28 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Role Selection ---
     teacherBtn.addEventListener('click', startTeacherSession);
     studentBtn.addEventListener('click', () => {
+        role = 'student';
         roleSelection.classList.add('hidden');
         studentView.classList.remove('hidden');
+        // Auto-join if sessionId is in URL
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('sessionId')) {
+            joinStudentSession();
+        }
     });
 
     joinBtn.addEventListener('click', joinStudentSession);
 
     // --- Teacher Functions ---
     function startTeacherSession() {
+        role = 'teacher';
         roleSelection.classList.add('hidden');
         teacherView.classList.remove('hidden');
         sessionId = generateSessionId();
         sessionIdDisplay.textContent = sessionId;
+        qrcodeContainer.innerHTML = ''; // Clear previous QR code
         new QRCode(qrcodeContainer, {
-            text: window.location.href + '?sessionId=' + sessionId,
+            text: window.location.origin + window.location.pathname + '?sessionId=' + sessionId,
             width: 128,
             height: 128,
         });
@@ -87,7 +96,12 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         const message = JSON.stringify({ type: 'question', ...currentPollData });
-        Object.values(dataChannels).forEach(dc => dc.send(message));
+        console.log('Teacher broadcasting question:', message);
+        Object.values(dataChannels).forEach(dc => {
+            if (dc.readyState === 'open') {
+                dc.send(message);
+            }
+        });
         updateTeacherChart();
     });
 
@@ -109,9 +123,11 @@ document.addEventListener('DOMContentLoaded', () => {
             input.value = '';
         }
         currentPollData = {};
-        teacherChart.data.labels = [];
-        teacherChart.data.datasets[0].data = [];
-        teacherChart.update();
+        if (teacherChart) {
+            teacherChart.data.labels = [];
+            teacherChart.data.datasets[0].data = [];
+            teacherChart.update();
+        }
     });
 
     exportCsvBtn.addEventListener('click', () => {
@@ -147,26 +163,49 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- WebRTC & WebSocket Logic ---
     function setupWebSocket() {
-        ws = new WebSocket(`${SIGNALING_SERVER_URL}?sessionId=${sessionId}`);
+        const wsUrl = `${SIGNALING_SERVER_URL}?sessionId=${sessionId}`;
+        console.log(`Connecting to signaling server at: ${wsUrl}`);
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+            console.log('WebSocket connection established.');
+            // **THE FIX IS HERE**: If you're a student, start the WebRTC process now.
+            if (role === 'student') {
+                connectToTeacher();
+            }
+        };
 
         ws.onmessage = async (message) => {
+            console.log('Received signaling message:', message.data);
             const data = JSON.parse(message.data);
             const fromId = data.from;
 
             if (data.offer) { // Teacher receives offer from new student
+                console.log(`Received offer from student ${fromId}`);
                 const pc = createPeerConnection(fromId);
                 await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
                 const answer = await pc.createAnswer();
                 await pc.setLocalDescription(answer);
                 ws.send(JSON.stringify({ to: fromId, from: 'teacher', answer: pc.localDescription }));
+                console.log(`Sent answer to student ${fromId}`);
             } else if (data.answer) { // Student receives answer from teacher
+                console.log('Received answer from teacher');
                 await localPeerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
             } else if (data.iceCandidate) { // Both receive ICE candidates
-                const pc = fromId === 'teacher' ? localPeerConnection : peerConnections[fromId];
-                if (pc) {
+                console.log(`Received ICE candidate from ${fromId}`);
+                const pc = role === 'student' ? localPeerConnection : peerConnections[fromId];
+                if (pc && pc.remoteDescription) { // Only add candidate if remote description is set
                     await pc.addIceCandidate(new RTCIceCandidate(data.iceCandidate));
                 }
             }
+        };
+
+        ws.onclose = () => {
+            console.warn('WebSocket connection closed.');
+        };
+
+        ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
         };
     }
 
@@ -177,20 +216,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
         pc.onicecandidate = event => {
             if (event.candidate) {
-                ws.send(JSON.stringify({ to: studentId, from: 'teacher', iceCandidate: event.candidate }));
+                const toId = role === 'teacher' ? studentId : 'teacher';
+                const fromId = role === 'teacher' ? 'teacher' : studentId; // Student doesn't know its ID, server handles it
+                ws.send(JSON.stringify({ to: toId, from: fromId, iceCandidate: event.candidate }));
             }
         };
 
-        if (studentId) { // Teacher creating connection for a student
+        pc.onconnectionstatechange = () => {
+            console.log(`Peer connection state for ${studentId || 'teacher'}: ${pc.connectionState}`);
+        };
+
+        if (role === 'teacher') {
             const dc = pc.createDataChannel('poll-channel');
-            dc.onopen = () => console.log(`Data channel open with ${studentId}`);
+            dc.onopen = () => console.log(`Data channel OPEN with student ${studentId}`);
             dc.onmessage = (event) => handleDataMessage(event, studentId);
             peerConnections[studentId] = pc;
             dataChannels[studentId] = dc;
-        } else { // Student creating their single connection
-            pc.ondatachannel = event => {
+        } else { // Student
+            pc.ondatachanel = event => {
+                console.log('Data channel received by student!');
                 localDataChannel = event.channel;
-                localDataChannel.onopen = () => console.log('Data channel open with teacher');
+                localDataChannel.onopen = () => console.log('Data channel OPEN with teacher');
                 localDataChannel.onmessage = (event) => handleDataMessage(event);
             };
         }
@@ -199,14 +245,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Student initiates connection
     async function connectToTeacher() {
+        console.log('Student is initiating connection to teacher...');
         localPeerConnection = createPeerConnection();
+        
+        // Student needs to set up the datachannel listener *before* creating the offer
+        localPeerConnection.ondatachannel = event => {
+            console.log('Student received data channel from teacher');
+            localDataChannel = event.channel;
+            localDataChannel.onopen = () => console.log('Data channel with teacher is now OPEN.');
+            localDataChannel.onmessage = (event) => handleDataMessage(event);
+        };
+
         const offer = await localPeerConnection.createOffer();
         await localPeerConnection.setLocalDescription(offer);
+        // The student ID is just for the message, the server knows who is who
         ws.send(JSON.stringify({ to: 'teacher', from: generateSessionId(6), offer: localPeerConnection.localDescription }));
+        console.log('Student sent offer to teacher.');
     }
 
     // --- Data Handling ---
     function handleDataMessage(event, studentId) {
+        console.log(`Received data channel message from ${studentId || 'teacher'}:`, event.data);
         const data = JSON.parse(event.data);
         if (data.type === 'question') { // Student receives question
             displayQuestion(data);
@@ -227,11 +286,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const button = document.createElement('button');
             button.textContent = option;
             button.onclick = () => {
-                // Visual feedback
                 document.querySelectorAll('#answer-options button').forEach(btn => btn.classList.remove('voted'));
                 button.classList.add('voted');
-                // Send vote
-                localDataChannel.send(JSON.stringify({ type: 'vote', voteIndex: index }));
+                if (localDataChannel && localDataChannel.readyState === 'open') {
+                    localDataChannel.send(JSON.stringify({ type: 'vote', voteIndex: index }));
+                }
             };
             answerOptions.appendChild(button);
         });
@@ -239,7 +298,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function broadcastResults() {
         const message = JSON.stringify({ type: 'results-update', ...currentPollData });
-        Object.values(dataChannels).forEach(dc => dc.send(message));
+        Object.values(dataChannels).forEach(dc => {
+            if (dc.readyState === 'open') {
+                dc.send(message);
+            }
+        });
     }
 
     function displayStudentResults(data) {
@@ -258,8 +321,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const ctx = document.getElementById('results-chart').getContext('2d');
         teacherChart = new Chart(ctx, {
             type: 'bar',
-            data: { labels, datasets: [{ label: '# of Votes', data }] },
-            options: { responsive: true, maintainAspectRatio: false }
+            data: { labels, datasets: [{ label: '# of Votes', data, backgroundColor: 'rgba(75, 192, 192, 0.5)' }] },
+            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
         });
     }
 
@@ -273,8 +336,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const ctx = document.getElementById('student-results-chart').getContext('2d');
         studentChart = new Chart(ctx, {
             type: 'bar',
-            data: { labels, datasets: [{ label: '# of Votes', data }] },
-            options: { responsive: true, maintainAspectRatio: false }
+            data: { labels, datasets: [{ label: '# of Votes', data, backgroundColor: 'rgba(75, 192, 192, 0.5)' }] },
+            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
         });
     }
 
@@ -286,14 +349,5 @@ document.addEventListener('DOMContentLoaded', () => {
             result += chars.charAt(Math.floor(Math.random() * chars.length));
         }
         return result;
-    }
-
-    // Auto-join if sessionId is in URL
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.has('sessionId')) {
-        roleSelection.classList.add('hidden');
-        studentView.classList.remove('hidden');
-        joinStudentSession();
-        connectToTeacher(); // Automatically try to connect
     }
 });
