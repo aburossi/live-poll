@@ -1,7 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- IMPORTANT ---
     // Replace this with the URL you get after deploying the server to Google Cloud Run
-    const SIGNALING_SERVER_URL = 'wss://your-server-url.a.run.app';
+    const SIGNALING_SERVER_URL = 'https://live-poll-server-147708164583.us-central1.run.app/';
 
     // UI Elements
     const roleSelection = document.getElementById('role-selection');
