@@ -1,7 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- IMPORTANT ---
     // This should already be your Google Cloud Run URL
-    const SIGNALING_SERVER_URL = 'wss://live-poll-server-147708164583.us-central1.run.app/'; // PASTE YOUR URL HERE
+    const SIGNALING_SERVER_URL = 'wss://live-poll-server-147708164583.us-central1.run.app'; // YOUR URL IS CORRECT
 
     // --- UI Elements ---
     const roleSelection = document.getElementById('role-selection');
@@ -44,7 +44,6 @@ document.addEventListener('DOMContentLoaded', () => {
         role = 'student';
         roleSelection.classList.add('hidden');
         studentView.classList.remove('hidden');
-        // Auto-join if sessionId is in URL
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('sessionId')) {
             joinStudentSession();
@@ -60,7 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
         teacherView.classList.remove('hidden');
         sessionId = generateSessionId();
         sessionIdDisplay.textContent = sessionId;
-        qrcodeContainer.innerHTML = ''; // Clear previous QR code
+        qrcodeContainer.innerHTML = '';
         new QRCode(qrcodeContainer, {
             text: window.location.origin + window.location.pathname + '?sessionId=' + sessionId,
             width: 128,
@@ -169,7 +168,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         ws.onopen = () => {
             console.log('WebSocket connection established.');
-            // **THE FIX IS HERE**: If you're a student, start the WebRTC process now.
             if (role === 'student') {
                 connectToTeacher();
             }
@@ -180,7 +178,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = JSON.parse(message.data);
             const fromId = data.from;
 
-            if (data.offer) { // Teacher receives offer from new student
+            if (data.offer) {
                 console.log(`Received offer from student ${fromId}`);
                 const pc = createPeerConnection(fromId);
                 await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
@@ -188,25 +186,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 await pc.setLocalDescription(answer);
                 ws.send(JSON.stringify({ to: fromId, from: 'teacher', answer: pc.localDescription }));
                 console.log(`Sent answer to student ${fromId}`);
-            } else if (data.answer) { // Student receives answer from teacher
+            } else if (data.answer) {
                 console.log('Received answer from teacher');
                 await localPeerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-            } else if (data.iceCandidate) { // Both receive ICE candidates
+            } else if (data.iceCandidate) {
                 console.log(`Received ICE candidate from ${fromId}`);
                 const pc = role === 'student' ? localPeerConnection : peerConnections[fromId];
-                if (pc && pc.remoteDescription) { // Only add candidate if remote description is set
+                if (pc && pc.remoteDescription) {
                     await pc.addIceCandidate(new RTCIceCandidate(data.iceCandidate));
                 }
             }
         };
 
-        ws.onclose = () => {
-            console.warn('WebSocket connection closed.');
-        };
-
-        ws.onerror = (error) => {
-            console.error('WebSocket error:', error);
-        };
+        ws.onclose = () => { console.warn('WebSocket connection closed.'); };
+        ws.onerror = (error) => { console.error('WebSocket error:', error); };
     }
 
     function createPeerConnection(studentId) {
@@ -216,8 +209,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         pc.onicecandidate = event => {
             if (event.candidate) {
+                console.log(`Found ICE candidate:`, event.candidate);
                 const toId = role === 'teacher' ? studentId : 'teacher';
-                const fromId = role === 'teacher' ? 'teacher' : studentId; // Student doesn't know its ID, server handles it
+                const fromId = role === 'teacher' ? 'teacher' : studentId;
                 ws.send(JSON.stringify({ to: toId, from: fromId, iceCandidate: event.candidate }));
             }
         };
@@ -228,37 +222,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (role === 'teacher') {
             const dc = pc.createDataChannel('poll-channel');
-            dc.onopen = () => console.log(`Data channel OPEN with student ${studentId}`);
+            dc.onopen = () => console.log(`%cData channel OPEN with student ${studentId}`, 'color: green; font-weight: bold;');
             dc.onmessage = (event) => handleDataMessage(event, studentId);
             peerConnections[studentId] = pc;
             dataChannels[studentId] = dc;
         } else { // Student
-            pc.ondatachanel = event => {
-                console.log('Data channel received by student!');
+            // *** THIS IS THE FIX ***
+            pc.ondatachannel = event => {
+                console.log('Student received data channel from teacher');
                 localDataChannel = event.channel;
-                localDataChannel.onopen = () => console.log('Data channel OPEN with teacher');
+                localDataChannel.onopen = () => console.log('%cData channel with teacher is now OPEN.', 'color: green; font-weight: bold;');
                 localDataChannel.onmessage = (event) => handleDataMessage(event);
             };
         }
         return pc;
     }
 
-    // Student initiates connection
     async function connectToTeacher() {
         console.log('Student is initiating connection to teacher...');
         localPeerConnection = createPeerConnection();
-        
-        // Student needs to set up the datachannel listener *before* creating the offer
-        localPeerConnection.ondatachannel = event => {
-            console.log('Student received data channel from teacher');
-            localDataChannel = event.channel;
-            localDataChannel.onopen = () => console.log('Data channel with teacher is now OPEN.');
-            localDataChannel.onmessage = (event) => handleDataMessage(event);
-        };
-
         const offer = await localPeerConnection.createOffer();
         await localPeerConnection.setLocalDescription(offer);
-        // The student ID is just for the message, the server knows who is who
         ws.send(JSON.stringify({ to: 'teacher', from: generateSessionId(6), offer: localPeerConnection.localDescription }));
         console.log('Student sent offer to teacher.');
     }
@@ -267,13 +251,13 @@ document.addEventListener('DOMContentLoaded', () => {
     function handleDataMessage(event, studentId) {
         console.log(`Received data channel message from ${studentId || 'teacher'}:`, event.data);
         const data = JSON.parse(event.data);
-        if (data.type === 'question') { // Student receives question
+        if (data.type === 'question') {
             displayQuestion(data);
-        } else if (data.type === 'vote') { // Teacher receives vote
+        } else if (data.type === 'vote') {
             currentPollData.votes[data.voteIndex]++;
             updateTeacherChart();
             broadcastResults();
-        } else if (data.type === 'results-update') { // Student receives results
+        } else if (data.type === 'results-update') {
             displayStudentResults(data);
         }
     }
@@ -281,7 +265,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function displayQuestion(data) {
         questionDisplay.textContent = data.question;
         answerOptions.innerHTML = '';
-        studentChartContainer.classList.add('hidden'); // Hide old results
+        studentChartContainer.classList.add('hidden');
         data.options.forEach((option, index) => {
             const button = document.createElement('button');
             button.textContent = option;
